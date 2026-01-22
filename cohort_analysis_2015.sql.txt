@@ -1,0 +1,68 @@
+WITH all_logs AS (
+    -- Об'єднуємо всі таблиці логів за 2015 рік в один потік
+    SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_01_2015
+    UNION ALL SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_02_2015
+    UNION ALL SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_03_2015
+    UNION ALL SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_04_2015
+    UNION ALL SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_05_2015
+    UNION ALL SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_06_2015
+    UNION ALL SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_07_2015
+    UNION ALL SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_08_2015
+    UNION ALL SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_09_2015
+    UNION ALL SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_10_2015
+    UNION ALL SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_11_2015
+    UNION ALL SELECT userId, timestamp, contentType, countryId, deviceType FROM userLog_12_2015
+),
+user_cohorts AS (
+    -- Визначаємо когорту для кожного користувача (місяць першої реєстрації у 2015)
+    SELECT 
+        u.id AS userId,
+        u.brand,
+        u.lang,
+        DATE_FORMAT(u.created, '%Y-%m-01') as cohort_month
+    FROM users u
+    WHERE u.created BETWEEN '2015-01-01' AND '2015-12-31'
+),
+activity_indexed AS (
+    -- Поєднуємо активність користувачів з їхніми когортами та рахуємо "вік" активності в місяцях
+    SELECT 
+        c.cohort_month,
+        c.brand,
+        c.lang,
+        l.countryId,
+        l.deviceType,
+        l.userId,
+        -- Рахуємо різницю в місяцях: (Year*12 + Month) - (Year*12 + Month)
+        (PERIOD_DIFF(DATE_FORMAT(l.timestamp, '%Y%m'), DATE_FORMAT(c.cohort_month, '%Y%m'))) AS month_index
+    FROM all_logs l
+    JOIN user_cohorts c ON l.userId = c.userId
+    WHERE l.contentType > 0
+)
+SELECT 
+    ai.cohort_month AS cohort,
+    CASE 
+        WHEN ai.brand = 1 THEN 'brand_1'
+        WHEN ai.brand = 2 THEN 'brand_2' 
+        ELSE 'other'
+    END AS brand,
+    SUBSTRING_INDEX(cs.name, ',', 1) AS country,
+    ai.lang,
+    dt.deviceTitle,
+    -- Формуємо матрицю утримання (Retention Matrix)
+    COUNT(DISTINCT CASE WHEN ai.month_index = 0 THEN ai.userId END) AS _0,
+    COUNT(DISTINCT CASE WHEN ai.month_index = 1 THEN ai.userId END) AS _1,
+    COUNT(DISTINCT CASE WHEN ai.month_index = 2 THEN ai.userId END) AS _2,
+    COUNT(DISTINCT CASE WHEN ai.month_index = 3 THEN ai.userId END) AS _3,
+    COUNT(DISTINCT CASE WHEN ai.month_index = 4 THEN ai.userId END) AS _4,
+    COUNT(DISTINCT CASE WHEN ai.month_index = 5 THEN ai.userId END) AS _5,
+    COUNT(DISTINCT CASE WHEN ai.month_index = 6 THEN ai.userId END) AS _6,
+    COUNT(DISTINCT CASE WHEN ai.month_index = 7 THEN ai.userId END) AS _7,
+    COUNT(DISTINCT CASE WHEN ai.month_index = 8 THEN ai.userId END) AS _8,
+    COUNT(DISTINCT CASE WHEN ai.month_index = 9 THEN ai.userId END) AS _9,
+    COUNT(DISTINCT CASE WHEN ai.month_index = 10 THEN ai.userId END) AS _10,
+    COUNT(DISTINCT CASE WHEN ai.month_index = 11 THEN ai.userId END) AS _11
+FROM activity_indexed ai
+LEFT JOIN countries cs ON cs.id = ai.countryId
+LEFT JOIN hmara_tv.deviceTypes dt ON dt.id = ai.deviceType
+GROUP BY 1, 2, 3, 4, 5
+ORDER BY 1, 2, 3;
